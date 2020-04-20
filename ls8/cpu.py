@@ -1,13 +1,27 @@
 """CPU functionality."""
-
 import sys
+
+###########################
+# Command opcodes
+###########################
+LDI = 0b10000010 # load register immediate --- LDI register integer
+PRN = 0b01000111 # print register contents --- PRN register
+HLT = 0b00000001 # halt & exit --- HLT
+
+##########################
 
 class CPU:
     """Main CPU class."""
 
     def __init__(self):
         """Construct a new CPU."""
-        pass
+        self.ram = [0] * 256
+        self.reg = [0] * 8
+        self.reg[7] = 0xF4
+        self.pc = 0 # program counter
+        self.fl = 0 # flags register 00000LGE
+        self.ir = 0 # instruction register
+
 
     def load(self):
         """Load a program into memory."""
@@ -29,6 +43,13 @@ class CPU:
         for instruction in program:
             self.ram[address] = instruction
             address += 1
+
+
+    def ram_read(self,mar):
+        return self.ram[mar]
+
+    def ram_write(self,mar,mdr):
+        self.ram[mar] = mdr
 
 
     def alu(self, op, reg_a, reg_b):
@@ -62,4 +83,22 @@ class CPU:
 
     def run(self):
         """Run the CPU."""
-        pass
+        running = True
+        while running:
+            self.ir = self.ram_read(self.pc)
+
+            if self.ir == HLT:
+                running = False
+            elif self.ir == LDI:
+                reg_addr = self.ram_read(self.pc+1)
+                value = self.ram_read(self.pc+2)
+                self.reg[reg_addr] = value
+                self.pc += 3
+            elif self.ir == PRN:
+                reg_addr = self.ram_read(self.pc+1)
+                value = self.reg[reg_addr]
+                print(value)
+                self.pc += 2
+            else:
+                print("Unknown instruction")
+                running = False
