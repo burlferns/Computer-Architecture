@@ -4,10 +4,10 @@ import sys
 ###########################
 # Command opcodes
 ###########################
-LDI = 0b10000010 # load register immediate --- LDI register integer
-PRN = 0b01000111 # print register contents --- PRN register
 HLT = 0b00000001 # halt & exit --- HLT
-
+LDI = 0b10000010 # load register immediate --- LDI register integer
+MUL = 0b10100010 #
+PRN = 0b01000111 # print register contents --- PRN register
 ##########################
 
 class CPU:
@@ -21,24 +21,45 @@ class CPU:
         self.pc = 0 # program counter
         self.fl = 0 # flags register 00000LGE
         self.ir = 0 # instruction register
+        self.running = True
+        self.branchtable = {}
+        self.branchtable[HLT] = self.handle_HLT
+        self.branchtable[LDI] = self.handle_LDI
+        self.branchtable[PRN] = self.handle_PRN
+        self.branchtable[MUL] = self.handle_MUL
 
+    def handle_HLT(self):
+        self.running = False
 
-    def load(self):
+    def handle_LDI(self):
+        reg_addr = self.ram_read(self.pc+1)
+        value = self.ram_read(self.pc+2)
+        self.reg[reg_addr] = value
+
+    def handle_PRN(self):
+        reg_addr = self.ram_read(self.pc+1)
+        value = self.reg[reg_addr]
+        print(value)
+
+    def handle_MUL(self):
+        regA_addr = self.ram_read(self.pc+1)
+        regB_addr = self.ram_read(self.pc+2)
+        self.alu("MUL",regA_addr,regB_addr)
+
+    def load(self,program):
         """Load a program into memory."""
-
         address = 0
 
         # For now, we've just hardcoded a program:
-
-        program = [
-            # From print8.ls8
-            0b10000010, # LDI R0,8
-            0b00000000,
-            0b00001000,
-            0b01000111, # PRN R0
-            0b00000000,
-            0b00000001, # HLT
-        ]
+        # program = [
+        #     # From print8.ls8
+        #     0b10000010, # LDI R0,8
+        #     0b00000000,
+        #     0b00001000,
+        #     0b01000111, # PRN R0
+        #     0b00000000,
+        #     0b00000001, # HLT
+        # ]
 
         for instruction in program:
             self.ram[address] = instruction
@@ -57,6 +78,8 @@ class CPU:
 
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
+        elif op == "MUL":
+            self.reg[reg_a] *= self.reg[reg_b]
         #elif op == "SUB": etc
         else:
             raise Exception("Unsupported ALU operation")
@@ -83,22 +106,15 @@ class CPU:
 
     def run(self):
         """Run the CPU."""
-        running = True
-        while running:
+        while self.running:
             self.ir = self.ram_read(self.pc)
 
-            if self.ir == HLT:
-                running = False
-            elif self.ir == LDI:
-                reg_addr = self.ram_read(self.pc+1)
-                value = self.ram_read(self.pc+2)
-                self.reg[reg_addr] = value
-                self.pc += 3
-            elif self.ir == PRN:
-                reg_addr = self.ram_read(self.pc+1)
-                value = self.reg[reg_addr]
-                print(value)
-                self.pc += 2
+            if self.ir in self.branchtable:
+                self.branchtable[self.ir]()
+                inst_len = ((self.ir & 0b11000000) >> 6) + 1
+                self.pc += inst_len
             else:
                 print("Unknown instruction")
-                running = False
+                self.running = False
+
+            
