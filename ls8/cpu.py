@@ -6,8 +6,10 @@ import sys
 ###########################
 HLT = 0b00000001 # halt & exit --- HLT
 LDI = 0b10000010 # load register immediate --- LDI register integer
-MUL = 0b10100010 #
+MUL = 0b10100010 # multiply regA & regB, store in regA --- MIL regA regB
+POP = 0b01000110 # pop stack into register --- POP register
 PRN = 0b01000111 # print register contents --- PRN register
+PUSH = 0b01000101 # push into stack register contents --- PUSH register
 ##########################
 
 class CPU:
@@ -25,8 +27,10 @@ class CPU:
         self.branchtable = {}
         self.branchtable[HLT] = self.handle_HLT
         self.branchtable[LDI] = self.handle_LDI
-        self.branchtable[PRN] = self.handle_PRN
         self.branchtable[MUL] = self.handle_MUL
+        self.branchtable[POP] = self.handle_POP
+        self.branchtable[PRN] = self.handle_PRN
+        self.branchtable[PUSH] = self.handle_PUSH
 
     def handle_HLT(self):
         self.running = False
@@ -36,15 +40,28 @@ class CPU:
         value = self.ram_read(self.pc+2)
         self.reg[reg_addr] = value
 
+    def handle_MUL(self):
+        regA_addr = self.ram_read(self.pc+1)
+        regB_addr = self.ram_read(self.pc+2)
+        self.alu("MUL",regA_addr,regB_addr)
+
+    def handle_POP(self):
+        reg_addr = self.ram_read(self.pc+1)
+        value = self.ram_read(self.reg[7])
+        self.reg[reg_addr] = value
+        self.reg[7] += 1
+
     def handle_PRN(self):
         reg_addr = self.ram_read(self.pc+1)
         value = self.reg[reg_addr]
         print(value)
 
-    def handle_MUL(self):
-        regA_addr = self.ram_read(self.pc+1)
-        regB_addr = self.ram_read(self.pc+2)
-        self.alu("MUL",regA_addr,regB_addr)
+    def handle_PUSH(self):
+        reg_addr = self.ram_read(self.pc+1)
+        value = self.reg[reg_addr]
+        self.reg[7] -= 1
+        self.ram_write(self.reg[7],value)
+    
 
     def load(self,program):
         """Load a program into memory."""
@@ -110,9 +127,12 @@ class CPU:
             self.ir = self.ram_read(self.pc)
 
             if self.ir in self.branchtable:
-                self.branchtable[self.ir]()
-                inst_len = ((self.ir & 0b11000000) >> 6) + 1
-                self.pc += inst_len
+                pc_value = self.branchtable[self.ir]()
+                if pc_value == None:
+                    inst_len = ((self.ir & 0b11000000) >> 6) + 1
+                    self.pc += inst_len
+                else:
+                    self.pc = pc_value
             else:
                 print("Unknown instruction")
                 self.running = False
