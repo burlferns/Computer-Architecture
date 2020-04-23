@@ -4,13 +4,19 @@ import sys
 ###########################
 # Command opcodes
 ###########################
+ADD = 0b10100000 # add regA & regB, store in regA --- ADD regA regB
+CALL = 0b01010000 # call subroutine at address --- CALL register
 HLT = 0b00000001 # halt & exit --- HLT
 LDI = 0b10000010 # load register immediate --- LDI register integer
-MUL = 0b10100010 # multiply regA & regB, store in regA --- MIL regA regB
+MUL = 0b10100010 # multiply regA & regB, store in regA --- MUL regA regB
 POP = 0b01000110 # pop stack into register --- POP register
 PRN = 0b01000111 # print register contents --- PRN register
 PUSH = 0b01000101 # push into stack register contents --- PUSH register
+RET = 0b00010001 # return from subroutine --- RET
 ##########################
+
+# SP is the general purpose register index for the stack pointer 
+SP = 7
 
 class CPU:
     """Main CPU class."""
@@ -19,18 +25,32 @@ class CPU:
         """Construct a new CPU."""
         self.ram = [0] * 256
         self.reg = [0] * 8
-        self.reg[7] = 0xF4
+        self.reg[SP] = 0xF4
         self.pc = 0 # program counter
         self.fl = 0 # flags register 00000LGE
         self.ir = 0 # instruction register
         self.running = True
         self.branchtable = {}
+        self.branchtable[ADD] = self.handle_ADD
+        self.branchtable[CALL] = self.handle_CALL
         self.branchtable[HLT] = self.handle_HLT
         self.branchtable[LDI] = self.handle_LDI
         self.branchtable[MUL] = self.handle_MUL
         self.branchtable[POP] = self.handle_POP
         self.branchtable[PRN] = self.handle_PRN
         self.branchtable[PUSH] = self.handle_PUSH
+        self.branchtable[RET] = self.handle_RET
+
+    def handle_ADD(self):
+        regA_addr = self.ram_read(self.pc+1)
+        regB_addr = self.ram_read(self.pc+2)
+        self.alu("ADD",regA_addr,regB_addr)
+
+    def handle_CALL(self):
+        reg_addr = self.ram_read(self.pc+1)
+        addrForStack = self.pc+2
+        self.pushStack(addrForStack)
+        return self.reg[reg_addr]
 
     def handle_HLT(self):
         self.running = False
@@ -47,9 +67,8 @@ class CPU:
 
     def handle_POP(self):
         reg_addr = self.ram_read(self.pc+1)
-        value = self.ram_read(self.reg[7])
+        value = self.popStack()
         self.reg[reg_addr] = value
-        self.reg[7] += 1
 
     def handle_PRN(self):
         reg_addr = self.ram_read(self.pc+1)
@@ -59,9 +78,20 @@ class CPU:
     def handle_PUSH(self):
         reg_addr = self.ram_read(self.pc+1)
         value = self.reg[reg_addr]
-        self.reg[7] -= 1
-        self.ram_write(self.reg[7],value)
+        self.pushStack(value)
+
+    def handle_RET(self):
+        return self.popStack()
     
+    def popStack(self):
+        value = self.ram_read(self.reg[SP])
+        self.reg[SP] += 1
+        return value
+
+    def pushStack(self,value):
+        self.reg[SP] -= 1
+        self.ram_write(self.reg[SP],value)
+
 
     def load(self,program):
         """Load a program into memory."""
@@ -96,10 +126,16 @@ class CPU:
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
         elif op == "MUL":
-            self.reg[reg_a] *= self.reg[reg_b]
+            self.reg[reg_a] *= self.reg[reg_b] 
         #elif op == "SUB": etc
         else:
-            raise Exception("Unsupported ALU operation")
+            raise Exception(f"Unsupported ALU operation: {op}")
+
+        # By bitwise ANDing to 0xFF, the bits higher than 8 bits are 
+        # chopped off from the add/multiply/etc result as it would be in
+        # an actual CPU with an 8 bit ALU
+        self.reg[reg_a] = self.reg[reg_a] & 0xFF
+
 
     def trace(self):
         """
@@ -119,12 +155,16 @@ class CPU:
         for i in range(8):
             print(" %02X" % self.reg[i], end='')
 
+        print(f" | %02X " % (self.ram_read(self.reg[SP])), end='')
+
         print()
 
     def run(self):
         """Run the CPU."""
         while self.running:
             self.ir = self.ram_read(self.pc)
+
+            # self.trace()
 
             if self.ir in self.branchtable:
                 pc_value = self.branchtable[self.ir]()
@@ -134,7 +174,7 @@ class CPU:
                 else:
                     self.pc = pc_value
             else:
-                print("Unknown instruction")
+                print(f"Unknown instruction : {self.ir:>08b}")
                 self.running = False
 
             
